@@ -13,7 +13,8 @@ const WINDOW_BOTTOM_Y: f32 = WINDOW_HEIGHT / -2.0;
 const WINDOW_LEFT_X: f32 = WINDOW_WIDTH / -2.0;
 
 const FLOOR_THICKNESS: f32 = 10.0;
-const FLOOR_COLOR: Color = Color::rgb(0.45,0.55, 0.66);
+const FLOOR_COLOR: Color = Color::srgb(0.45,0.55, 0.66);
+
 
 fn main() {
     App::new()
