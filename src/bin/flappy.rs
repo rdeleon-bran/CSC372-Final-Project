@@ -13,19 +13,14 @@ Language/Version: Rust (1.95.0), Bevy 0.18.0, bevy_rapier2d 0.32.0
 Compilation: "cargo run --bin flappy"
 
 Known Bugs / Missing Features:
-1. No scoring system implemented yet
+1. Background image not generating because could not find good png, only jpg
 2. PLAYER_VELOCIY_Y is a typo of PLAYER_VELOCITY_Y (kept to avoid breaking changes)
-3. Keeps going after game is over (could be a feature or we could end generation when game is over)
 */
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_rapier2d::prelude::*;
 use rand::prelude::*;
-
-const BACKGROUND_COLOR: Color = Color::srgb(0.29, 0.31, 0.41); // Background color of the game window
-const PLATFORM_COLOR: Color = Color::srgb(0.13, 0.13, 0.23);   // Color used to render platforms
-const PLAYER_COLOR: Color = Color::srgb(0.60, 0.55, 0.60);     // Color used to render the player circle
 
 // Adjust these to change the game window size
 const WINDOW_WIDTH: f32 = 1024.0;  // Width of the game window in pixels
@@ -83,8 +78,21 @@ struct Player;
 #[derive(Component)]
 struct Floor;
 
+#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
+enum GameState {
+    #[default]
+    StartScreen,
+    Playing
+}
+
+#[derive(Component)]
+struct StartScreen;
+
 #[derive(Component)]
 struct GameOverScreen; // marker for the game over UI entity so we can despawn it later if needed
+
+#[derive(Resource, Default)]
+struct GameOver(bool);
 
 // main
 // Purpose: Entry point of the application. Configures and launches the Bevy app
@@ -93,9 +101,10 @@ struct GameOverScreen; // marker for the game over UI entity so we can despawn i
 // Post-condition: The Bevy app is running with physics, rendering, and input systems active.
 fn main() {
     App::new()
-        .insert_resource(ClearColor(BACKGROUND_COLOR)) // Set the window background color
+        .insert_resource(ClearColor(Color::BLACK)) // Set the window background color
         .insert_resource(CameraSpeed { speed: CAMERA_INITIAL_SPEED, timer: 0.0 }) // Initialize camera speed resource
         .insert_resource(LevelState { furthest_x: WINDOW_WIDTH / 2.0 }) // Start generating from the right edge of the screen
+        .insert_resource(GameOver(false))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "FLAPPY BIRD CLONE".to_string(),   // Title displayed in the window bar
@@ -107,17 +116,76 @@ fn main() {
         }))
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(200.0)) // Physics plugin, 200px = 1 meter
         .add_plugins(RapierDebugRenderPlugin::default())  // Renders collider outlines for debugging
+        .init_state::<GameState>()
         .add_systems(Startup, setup)// Run setup once at startup
-        .add_systems(Update, movement)// Handle left/right movement every frame
-        .add_systems(Update, jump)// Detect jump input every frame
-        .add_systems(Update, rise)// Apply upward movement while jumping
-        .add_systems(Update, fall)// Apply downward movement when not jumping
-        .add_systems(Update, scroll_camera)// Move the camera rightward every frame
-        .add_systems(Update, generate_platforms)// Spawn new platforms ahead of the camera
-        .add_systems(Update, despawn_platforms)// Remove platforms that have scrolled off screen
-        .add_systems(Update, check_player_death)// Check if the player has fallen behind the camera
-        .add_systems(Update, follow_camera_floor)
+        // .add_systems(Update, movement)// Handle left/right movement every frame
+        // .add_systems(Update, jump)// Detect jump input every frame
+        // .add_systems(Update, rise)// Apply upward movement while jumping
+        // .add_systems(Update, fall)// Apply downward movement when not jumping
+        // .add_systems(Update, scroll_camera)// Move the camera rightward every frame
+        // .add_systems(Update, generate_platforms)// Spawn new platforms ahead of the camera
+        // .add_systems(Update, despawn_platforms)// Remove platforms that have scrolled off screen
+        // .add_systems(Update, check_player_death)// Check if the player has fallen behind the camera
+        // .add_systems(Update, follow_camera_floor)
+        .add_systems(Update,(movement, jump, rise, fall, scroll_camera, generate_platforms, despawn_platforms, check_player_death, follow_camera_floor).run_if(in_state(GameState::Playing)))
+        .add_systems(OnEnter(GameState::StartScreen), spawn_start_screen)
+        .add_systems(Update, start_on_input.run_if(in_state(GameState::StartScreen)))
+        .add_systems(OnExit(GameState::StartScreen), despawn_start_screen)
         .run();
+}
+
+// spawn_start_screen
+// Purpose: Have a starting screen for the player to interact with before the game starts
+// Pre-condition: A still state of the game, where wait for input from player
+// Post-condition: Screen and Game enter play state where the game is running
+// Parameters:
+//      commands (in/out):  User input
+fn spawn_start_screen(mut commands: Commands){
+    commands.spawn((Node {
+        width: Val::Percent(100.0),
+        height: Val::Percent(100.0),
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        ..Default::default()
+    },
+    BackgroundColor(Color::BLACK),
+    StartScreen,
+    ))
+    .with_children(|parent| {
+        parent.spawn((Text::new("Press 'Space' to Start"),
+        TextFont{
+            font_size: 50.0,
+            ..Default::default()
+        },
+        TextColor(Color::srgb(0.9, 0.9, 0.9)),
+        ));
+    });
+}
+
+// start_on_input
+// Purpose: To have a start screen that will only play the game once the player is ready to engage
+// Pre-condition: Waiting until player presses 'space' bar
+// Post-condition: GameState will change to playing
+// Parameters:
+//      input (in): Keyboard input
+//      next_state: A GameState condition
+fn start_on_input(input: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<GameState>>) {
+    if input.just_pressed(KeyCode::Space) {
+        next_state.set(GameState::Playing);
+    }
+}
+
+// despawn_start_screen
+// Purpose: To remove the start screen after player has met the condition
+// Pre-condition: GameState of Start screen
+// Post-condition: GameState of the Playing screen
+// Parameters:
+//      commands (in/out): user input
+//      query: all startscreen entities
+fn despawn_start_screen(mut commands: Commands,  query: Query<Entity, With<StartScreen>>){
+    for entity in query.iter(){
+        commands.entity(entity).despawn();
+    }
 }
 
 // rise
@@ -185,7 +253,7 @@ struct Jump(f32); // f32 tracks cumulative upward distance traveled
 //   input (in):        Bevy input resource for reading keyboard state
 //   commands (in/out): Used to insert the Jump component onto the player entity
 //   query (in):        Query for player entities that are grounded and not already jumping
-fn jump(input: Res<ButtonInput<KeyCode>>, mut commands: Commands, mut query: Query<(Entity, &KinematicCharacterControllerOutput), (With<KinematicCharacterController>, Without<Jump>)>) {
+fn jump(input: Res<ButtonInput<KeyCode>>, mut commands: Commands, query: Query<(Entity, &KinematicCharacterControllerOutput), (With<KinematicCharacterController>, Without<Jump>)>) {
     if query.is_empty() {
         return;
     }
@@ -215,15 +283,15 @@ impl PlatformBundle {
     // Parameters:
     //   x (in):     Horizontal position of the platform in world space, adjust to move platform left/right
     //   scale (in): Size of the platform, x = width, y = height, adjust to resize the platform
-    fn new(x: f32, scale: Vec3) -> Self {
+    fn new(x: f32, scale: Vec3, asset_server: &Res<AssetServer>) -> Self {
         Self {
             sprite: Sprite {
-                color: PLATFORM_COLOR, // Use the global platform color constant
+                image: asset_server.load("flappy_pillar.png"),
+                custom_size: Some(Vec2::new(scale.x, scale.y)),
                 ..Default::default()
             },
             transform: Transform {
                 translation: Vec3::new(x, WINDOW_BOTTOM_Y + (scale.y / 2.0), 0.0), // Position platform so its base sits at the bottom, adjust x to reposition horizontally
-                scale, // Apply the given scale to set the platform dimensions
                 ..Default::default()
             },
             body: RigidBody::Fixed,           // Platform does not move under physics simulation
@@ -241,12 +309,25 @@ impl PlatformBundle {
 //   commands (in/out):   Used to spawn entities into the Bevy world
 //   meshes (in/out):     Asset store for meshes, used to create the player circle shape
 //   materials (in/out):  Asset store for materials, used to apply color to the player mesh
-fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<ColorMaterial>>) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+
+    // Spawn background
+    commands.spawn((
+        Sprite {
+            image: asset_server.load("flappy_nightsky.jpg"),
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+            ..Default::default()
+        },
+        Transform {
+            translation: Vec3::new(0.0, 0.0, -100.0),
+            ..Default::default()
+        },
+    ));
 
     // Spawn initial platforms, adjust x and Vec3 values to reposition or resize each platform
-    commands.spawn(PlatformBundle::new(-100.0, Vec3::new(75.0, 200.0, 1.0)));  // Left platform
-    commands.spawn(PlatformBundle::new(100.0, Vec3::new(50.0, 350.0, 1.0)));   // Center platform
-    commands.spawn(PlatformBundle::new(350.0, Vec3::new(150.0, 250.0, 1.0))); // Right platform
+    commands.spawn(PlatformBundle::new(-100.0, Vec3::new(75.0, 200.0, 1.0), &asset_server));  // Left platform
+    commands.spawn(PlatformBundle::new(100.0, Vec3::new(50.0, 350.0, 1.0), &asset_server));   // Center platform
+    commands.spawn(PlatformBundle::new(350.0, Vec3::new(150.0, 250.0, 1.0), &asset_server)); // Right platform
 
     // Spawn the floor as a fixed static entity spanning the window width
     commands.spawn((
@@ -266,11 +347,10 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
 
     // Spawn the player as a kinematic circle with physics control
     commands.spawn((
-        Mesh2d(meshes.add(Circle::default())),                            // Circle mesh for the player shape
-        MeshMaterial2d(materials.add(ColorMaterial::from(PLAYER_COLOR))), // Apply player color material
+        Sprite::from_image(asset_server.load("flappy_bird.png")), // Apply player color material
         Transform {
             translation: Vec3::new(WINDOW_LEFT_X + 100.0, WINDOW_BOTTOM_Y + 30.0, 0.0), // Starting position, adjust to move player spawn point
-            scale: Vec3::new(30.0, 30.0, 1.0), // Player size in pixels, adjust to resize the player
+            scale: Vec3::new(0.05, 0.05, 1.0), // Player size in pixels, adjust to resize the player
             ..Default::default()
         },
         RigidBody::KinematicPositionBased,       // Player is kinematic, movement is controlled manually
@@ -306,12 +386,16 @@ fn follow_camera_floor(camera_query: Query<&Transform, With<Camera2d>>, mut floo
 //   time (in):         Bevy time resource used to calculate frame-delta movement
 //   camera_speed (in/out): Resource tracking current speed and time since last increase
 //   query (in/out):    Query for the camera transform
-fn scroll_camera(time: Res<Time>, mut camera_speed: ResMut<CameraSpeed>, mut query: Query<&mut Transform, With<Camera2d>>) {
+fn scroll_camera(time: Res<Time>, mut camera_speed: ResMut<CameraSpeed>, mut query: Query<&mut Transform, With<Camera2d>>, game_over: Res<GameOver>) {
     let Ok(mut camera) = query.single_mut() else { return; };
 
     let delta = time.delta_secs(); // Time elapsed since last frame in seconds
 
     camera_speed.timer += delta; // Accumulate time toward next speed increase
+
+    if game_over.0 {
+        return;
+    }
 
     if camera_speed.timer >= CAMERA_SPEED_INTERVAL {
         camera_speed.timer = 0.0; // Reset the interval timer
@@ -330,11 +414,15 @@ fn scroll_camera(time: Res<Time>, mut camera_speed: ResMut<CameraSpeed>, mut que
 //   commands (in/out):   Used to spawn new platform entities
 //   camera_query (in):   Query to read the current camera X position
 //   level_state (in/out): Resource tracking the furthest generated X position
-fn generate_platforms(mut commands: Commands, camera_query: Query<&Transform, With<Camera2d>>, mut level_state: ResMut<LevelState>) {
+fn generate_platforms(mut commands: Commands, camera_query: Query<&Transform, With<Camera2d>>, mut level_state: ResMut<LevelState>, game_over: Res<GameOver>, asset_server: Res<AssetServer>) {
     let Ok(camera) = camera_query.single() else { return; };
 
     let camera_right = camera.translation.x + WINDOW_WIDTH / 2.0; // X position of the right edge of the camera view
     let spawn_target = camera_right + PLATFORM_SPAWN_AHEAD;        // How far ahead we want platforms to exist
+
+    if game_over.0 {
+        return;
+    }
 
     let mut rng = rand::rng(); // Random number generator for platform sizing and spacing
 
@@ -345,7 +433,7 @@ fn generate_platforms(mut commands: Commands, camera_query: Query<&Transform, Wi
 
         let x = level_state.furthest_x + gap + width / 2.0; // Center X of the new platform
 
-        commands.spawn(PlatformBundle::new(x, Vec3::new(width, height, 1.0))); // Spawn the platform at the calculated position
+        commands.spawn(PlatformBundle::new(x, Vec3::new(width, height, 1.0), &asset_server)); // Spawn the platform at the calculated position
 
         level_state.furthest_x = x + width / 2.0; // Advance the generation cursor to the right edge of the new platform
     }
@@ -388,6 +476,7 @@ fn check_player_death(
     camera_query: Query<&Transform, With<Camera2d>>,
     player_query: Query<(Entity, &Transform), With<Player>>,
     game_over_query: Query<&GameOverScreen>,
+    mut game_over: ResMut<GameOver>,
 ) {
     if !game_over_query.is_empty() {
         return; // Game over screen already showing, do nothing
@@ -400,6 +489,7 @@ fn check_player_death(
 
     if player_transform.translation.x < camera_left {
         commands.entity(player_entity).despawn(); // Remove the player from the world
+        game_over.0 = true;
 
         // Spawn a full screen dark overlay
         commands.spawn((
