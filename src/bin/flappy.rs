@@ -74,6 +74,16 @@ struct Player;
 #[derive(Component)]
 struct Floor;
 
+#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
+enum GameState {
+    #[default]
+    StartScreen,
+    Playing
+}
+
+#[derive(Component)]
+struct StartScreen;
+
 #[derive(Component)]
 struct GameOverScreen; // marker for the game over UI entity so we can despawn it later if needed
 
@@ -96,6 +106,7 @@ struct PlayerVelocity {
 fn main() {
     App::new()
         .insert_resource(LevelState { furthest_x: WINDOW_WIDTH / 2.0 }) // Start generating from the right edge of the screen
+        .insert_resource(GameOver(false))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "FLAPPY Knight".to_string(),   // Title displayed in the window bar
@@ -107,6 +118,7 @@ fn main() {
         }))
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(200.0)) // Physics plugin, 200px = 1 meter
         .add_plugins(RapierDebugRenderPlugin::default())  // Renders collider outlines for debugging
+        .init_state::<GameState>()
         .add_systems(Startup, setup)// Run setup once at startup
         .add_systems(Update, flap)
         .add_systems(Update, apply_gravity)
@@ -432,6 +444,7 @@ fn check_platform_collision(
     mut commands: Commands,
     player_query: Query<(Entity, &KinematicCharacterControllerOutput), With<Player>>,
     game_over_query: Query<&GameOverScreen>,
+    mut game_over: ResMut<GameOver>,
 ) {
     if !game_over_query.is_empty() {
         return;
