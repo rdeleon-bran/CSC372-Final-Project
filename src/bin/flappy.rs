@@ -20,9 +20,8 @@ Language/Version: Rust (1.95.0), Bevy 0.18.0, bevy_rapier2d 0.32.0
 Compilation: "cargo run --bin flappy"
 
 Known Bugs / Missing Features:
-1. No scoring system implemented yet
+1. Background image not generating because could not find good png, only jpg
 2. PLAYER_VELOCIY_Y is a typo of PLAYER_VELOCITY_Y (kept to avoid breaking changes)
-3. Keeps going after game is over (could be a feature or we could end generation when game is over)
 */
 
 use bevy::prelude::*;
@@ -81,8 +80,21 @@ struct Player;
 #[derive(Component)]
 struct Floor;
 
+#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
+enum GameState {
+    #[default]
+    StartScreen,
+    Playing
+}
+
+#[derive(Component)]
+struct StartScreen;
+
 #[derive(Component)]
 struct GameOverScreen; // marker for the game over UI entity so we can despawn it later if needed
+
+#[derive(Resource, Default)]
+struct GameOver(bool);
 
 // main
 // Purpose: Entry point of the application. Configures and launches the Bevy app
@@ -93,6 +105,7 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(BACKGROUND_COLOR)) // Set the window background color
         .insert_resource(LevelState { furthest_x: WINDOW_WIDTH / 2.0 }) // Start generating from the right edge of the screen
+        .insert_resource(GameOver(false))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "FLAPPY BIRD CLONE".to_string(),   // Title displayed in the window bar
@@ -104,6 +117,7 @@ fn main() {
         }))
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(200.0)) // Physics plugin, 200px = 1 meter
         .add_plugins(RapierDebugRenderPlugin::default())  // Renders collider outlines for debugging
+        .init_state::<GameState>()
         .add_systems(Startup, setup)// Run setup once at startup
         .add_systems(Update, flap)
         .add_systems(Update, apply_gravity)
@@ -435,6 +449,7 @@ fn check_platform_collision(
     mut commands: Commands,
     player_query: Query<(Entity, &KinematicCharacterControllerOutput), With<Player>>,
     game_over_query: Query<&GameOverScreen>,
+    mut game_over: ResMut<GameOver>,
 ) {
     if !game_over_query.is_empty() {
         return;
