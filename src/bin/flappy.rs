@@ -74,21 +74,12 @@ struct Player;
 #[derive(Component)]
 struct Floor;
 
-#[derive(States, Debug, Clone, Eq, PartialEq, Hash, Default)]
-enum GameState {
-    #[default]
-    StartScreen,
-    Playing
-}
-
-#[derive(Component)]
-struct StartScreen;
-
 #[derive(Component)]
 struct GameOverScreen; // marker for the game over UI entity so we can despawn it later if needed
 
 #[derive(Component)]
 struct Background;
+
 
 // PlayerVelocity tracks the player's current vertical speed
 // positive = moving up, negative = moving down
@@ -97,6 +88,9 @@ struct PlayerVelocity {
     vy: f32, // vertical velocity in pixels per second
 }
 
+// GameStarted resource tracks whether the player has pressed space to begin
+#[derive(Resource)]
+struct GameStarted(bool);
 
 // main
 // Purpose: Entry point of the application. Configures and launches the Bevy app
@@ -106,7 +100,7 @@ struct PlayerVelocity {
 fn main() {
     App::new()
         .insert_resource(LevelState { furthest_x: WINDOW_WIDTH / 2.0 }) // Start generating from the right edge of the screen
-        .insert_resource(GameOver(false))
+        .insert_resource(GameStarted(false)) // game waits for first space press before starting
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "FLAPPY Knight".to_string(),   // Title displayed in the window bar
@@ -118,7 +112,6 @@ fn main() {
         }))
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::pixels_per_meter(200.0)) // Physics plugin, 200px = 1 meter
         .add_plugins(RapierDebugRenderPlugin::default())  // Renders collider outlines for debugging
-        .init_state::<GameState>()
         .add_systems(Startup, setup)// Run setup once at startup
         .add_systems(Update, flap)
         .add_systems(Update, apply_gravity)
@@ -129,6 +122,7 @@ fn main() {
         .add_systems(Update, camera_follows_player)
         .add_systems(Update, check_platform_collision)
         .add_systems(Update, camera_follows_background)
+        .add_systems(Update, wait_for_start) // waits for first space press to begin the game
         .run();
 }
 
@@ -251,8 +245,10 @@ impl PlatformBundle {
 fn generate_platforms(
     mut commands: Commands,
     camera_query: Query<&Transform, With<Camera2d>>,
-    mut level_state: ResMut<LevelState>, asset_server: Res<AssetServer>
+    mut level_state: ResMut<LevelState>, asset_server: Res<AssetServer>,
+    started: Res<GameStarted>
 ) {
+    if !started.0 { return; } // do nothing until first space press
     let Ok(camera) = camera_query.single() else { return; };
 
     let camera_right = camera.translation.x + WINDOW_WIDTH / 2.0;
@@ -370,7 +366,9 @@ fn camera_follows_background(
 fn apply_gravity(
     time: Res<Time>,
     mut query: Query<(&mut PlayerVelocity, &mut KinematicCharacterController), With<Player>>,
+    started: Res<GameStarted>
 ) {
+     if !started.0 { return; } // do nothing until first space press
     let Ok((mut velocity, mut player)) = query.single_mut() else { return; };
 
     let delta = time.delta_secs();
@@ -416,7 +414,9 @@ fn flap(
 fn move_forward(
     time: Res<Time>,
     mut query: Query<&mut KinematicCharacterController, With<Player>>,
+    started: Res<GameStarted>
 ) {
+    if !started.0 { return; } // do nothing until first space press
     let Ok(mut player) = query.single_mut() else { return; };
 
     let forward = time.delta_secs() * PLAYER_FORWARD_SPEED;
@@ -424,6 +424,23 @@ fn move_forward(
     match player.translation {
         Some(vec) => player.translation = Some(Vec2::new(forward, vec.y)), // preserve vertical
         None => player.translation = Some(Vec2::new(forward, 0.0)),
+    }
+}
+
+// wait_for_start
+// Purpose: Waits for the first space key press and marks the game as started.
+// Until this happens all movement and generation systems are paused.
+// Pre-condition:  GameStarted resource exists and is false.
+// Post-condition: GameStarted is set to true on the first space press.
+// Parameters:
+//   input (in): Bevy input resource for reading keyboard state
+//   started (in/out): Resource tracking whether the game has begun
+fn wait_for_start(
+    input: Res<ButtonInput<KeyCode>>,
+    mut started: ResMut<GameStarted>,
+) {
+    if input.just_pressed(KeyCode::Space) {
+        started.0 = true;
     }
 }
 
@@ -444,7 +461,6 @@ fn check_platform_collision(
     mut commands: Commands,
     player_query: Query<(Entity, &KinematicCharacterControllerOutput), With<Player>>,
     game_over_query: Query<&GameOverScreen>,
-    mut game_over: ResMut<GameOver>,
 ) {
     if !game_over_query.is_empty() {
         return;
