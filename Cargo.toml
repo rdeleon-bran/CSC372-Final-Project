@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy =  { version = "0.18.1", features = ["dynamic_linking"] }
-bevy_rapier2d = "0.33.0"
-rand = "0.10.1"
+bevy =  { version = "0.17", features = ["dynamic_linking"] }
+bevy_rapier2d = "0.32.0"
+rand = "0.9"
 
 [profile.dev]
 opt-level = 1
