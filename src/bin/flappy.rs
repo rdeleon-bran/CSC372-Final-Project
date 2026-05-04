@@ -8,9 +8,9 @@ Due Date: 5/4/2026
 
 Adapted from: "Learning Game Dev - Building a platformer with Bevy"
 The tutorial helped us get started with creating the platformer and showed us implementation of Bevy and Rapier 2d
-physics to begin the development process. Showed how to add create the platforms, player, and movement mechanics.
-After this was done, we created the physics mechanics, space mechanic for flying , procedural generation, despawning of platforms for memory,
-collision detection when a platform is hit by the player to end the game.
+physics to begin the development process. Showed how to add create the platforms, player, and basic movement mechanics.
+After this was done, we created the physics mechanics for a flappy bird style game, space mechanic for flying , procedural generation, despawning of platforms for memory,
+collision detection when a platform is hit by the player to end the game, and added visuals to complete the game.
 
 Description: A 2d scroller game that resembles flappy bird in Rust, the game goes on forever until a user hits a platform, space is used
 to fly in the air and when no jump is added the player falls from the sky. The platforms are walls split in half and the goal of the
@@ -20,9 +20,8 @@ Language/Version: Rust (1.95.0), Bevy 0.18.0, bevy_rapier2d 0.32.0
 Compilation: "cargo run --bin flappy"
 
 Known Bugs / Missing Features:
-1. No scoring system implemented yet
-2. PLAYER_VELOCIY_Y is a typo of PLAYER_VELOCITY_Y (kept to avoid breaking changes)
-3. Keeps going after game is over (could be a feature or we could end generation when game is over)
+1. No scoring system implemented
+2. No restart funtion was added so need to recompile after losing.
 */
 
 use bevy::prelude::*;
