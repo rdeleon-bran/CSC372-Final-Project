@@ -1,4 +1,4 @@
-/*File:        main.rs
+/*File:        pgm_2_pbs.rs
   Author:      Trinity Adams, Rodrigo De Leon Bran
   Course:      CSC372
   Assignment:  Final Project Part 2
